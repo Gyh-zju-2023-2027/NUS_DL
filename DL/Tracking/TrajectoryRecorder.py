@@ -5,7 +5,7 @@ import numpy as np
 
 from PingPong_detection import preprocess, read_Trackbar, creat_Trackbar
 
-SAVE_PATH = "trajectory_data.csv"
+SAVE_PATH = "Trajectory_data/trajectory_data.csv"
 
 cap = cv2.VideoCapture(0)
 cv2.namedWindow('Frame', 2)

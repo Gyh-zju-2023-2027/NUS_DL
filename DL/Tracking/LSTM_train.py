@@ -41,7 +41,7 @@ class LSTM_Predictor(nn.Module):
         return out.view(batch_size, self.output_len, self.input_size)
 
 # ======== Training Script ========
-def train_model(csv_path="trajectory_data.csv", seq_len=10, pred_len=5, epochs=50):
+def train_model(csv_path="Trajectory_data/trajectory_data.csv", seq_len=10, pred_len=5, epochs=50):
     dataset = TrajectoryDataset(csv_path, seq_len, pred_len)
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 
