@@ -1,21 +1,21 @@
 import cv2
 import numpy as np
+from prediction import predict_trajectory_lstm
 
 def preprocess(image,lower_yellow,upper_yellow):
     hsv = cv2.cvtColor(image,cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, lower_yellow ,upper_yellow)
     return mask
 
-def nothing(x):
-    pass
+def nothing(x): pass
 
 def creat_Trackbar():
-    cv2.createTrackbar('SeXiang_L', 'Trackbar', 0, 179, nothing)
-    cv2.createTrackbar('SeXiang_H', 'Trackbar', 0, 179, nothing)
-    cv2.createTrackbar('BaoHeDu_L', 'Trackbar', 0, 255, nothing)
-    cv2.createTrackbar('BaoHeDu_H', 'Trackbar', 0, 255, nothing)
-    cv2.createTrackbar('Zhi_L', 'Trackbar', 0, 255, nothing)
-    cv2.createTrackbar('Zhi_H', 'Trackbar', 0, 255, nothing)
+    cv2.createTrackbar('SeXiang_L', 'Trackbar', 20, 179, nothing)
+    cv2.createTrackbar('SeXiang_H', 'Trackbar', 35, 179, nothing)
+    cv2.createTrackbar('BaoHeDu_L', 'Trackbar', 100, 255, nothing)
+    cv2.createTrackbar('BaoHeDu_H', 'Trackbar', 255, 255, nothing)
+    cv2.createTrackbar('Zhi_L', 'Trackbar', 100, 255, nothing)
+    cv2.createTrackbar('Zhi_H', 'Trackbar', 255, 255, nothing)
 
 def read_Trackbar():
     SeXiang_L = cv2.getTrackbarPos('SeXiang_L', 'Trackbar')
@@ -24,53 +24,51 @@ def read_Trackbar():
     BaoHeDu_H = cv2.getTrackbarPos('BaoHeDu_H', 'Trackbar')
     Zhi_L = cv2.getTrackbarPos('Zhi_L', 'Trackbar')
     Zhi_H = cv2.getTrackbarPos('Zhi_H', 'Trackbar')
-
-    lower_yellow = np.array([SeXiang_L, BaoHeDu_L, Zhi_L])
-    upper_yellow = np.array([SeXiang_H, BaoHeDu_H, Zhi_H])
-
-    return lower_yellow,upper_yellow
-
+    return np.array([SeXiang_L, BaoHeDu_L, Zhi_L]), np.array([SeXiang_H, BaoHeDu_H, Zhi_H])
 
 def show_image():
     cap = cv2.VideoCapture(0)
-    #cv2.namedWindow('mask', 2)
     cv2.namedWindow('Trackbar', 2)
     creat_Trackbar()
 
-    while (1):
-        _,image = cap.read()
-        cv2.imshow('Trackbar', image)
-        image = cv2.GaussianBlur(image, (5, 5), 0)
-        # kernel = np.ones((5, 5), np.float32) / 25
-        # image = cv2.filter2D(image, -1, kernel)
+    trajectory = []  # 存储圆心坐标
 
-        k = cv2.waitKey(1) & 0xFF
-        if k == 27:
+    while True:
+        ret, image = cap.read()
+        if not ret:
             break
-        lower_yellow,upper_yellow = read_Trackbar()
 
-        mask = preprocess(image,lower_yellow,upper_yellow)
-        res = cv2.bitwise_and(image,image, mask= mask)
-        res = cv2.cvtColor(res,cv2.COLOR_BGR2GRAY)
-        #res = cv2.Canny(res, 50, 200)
-        circles = cv2.HoughCircles(res, cv2.HOUGH_GRADIENT, 1, 1000000, param1=100, param2=11, minRadius=10, maxRadius=100)
-        #print(circles)
+        image = cv2.GaussianBlur(image, (5, 5), 0)
+        cv2.imshow('Trackbar', image)
+
+        lower_yellow, upper_yellow = read_Trackbar()
+        mask = preprocess(image, lower_yellow, upper_yellow)
+        res = cv2.bitwise_and(image, image, mask=mask)
+        res_gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+
+        circles = cv2.HoughCircles(res_gray, cv2.HOUGH_GRADIENT, 1, 1000000, param1=100, param2=11, minRadius=10, maxRadius=100)
+
         if circles is not None:
             circles = np.uint16(np.around(circles))
             for i in circles[0, :]:
-                cv2.circle(image, (i[0], i[1]), i[2], (255, 255, 255), 2)
-                cv2.circle(image, (i[0], i[1]), 2, (255, 255, 255), 2)  # 圆心
-                r = int(i[2])
-                x = int(i[0])
-                y = int(i[1])
-                print("圆心坐标为：", (x, y))
-                print("圆的半径是：", r)
-        else :
-            #print('乒乓球不存在')
-            pass
-        cv2.imshow('res', res)
+                x, y, r = int(i[0]), int(i[1]), int(i[2])
+                trajectory.append((x, y))
+                cv2.circle(image, (x, y), r, (255, 255, 255), 2)
+                cv2.circle(image, (x, y), 2, (255, 255, 255), 2)
+                print("圆心坐标为：", (x, y), "半径：", r)
+
+        # 显示图像
+        cv2.imshow('res', res_gray)
         cv2.imshow('image', image)
 
+        key = cv2.waitKey(1) & 0xFF
+        if key == 27:  # ESC退出
+            break
+        elif key == ord('p'):  # 按 P 键预测
+            print(f"\n[LSTM] 当前轨迹点数：{len(trajectory)}，开始拟合预测...")
+            predict_trajectory_lstm(trajectory, future_steps=5)
+
+    cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
