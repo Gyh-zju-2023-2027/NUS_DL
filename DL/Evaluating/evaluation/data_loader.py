@@ -143,7 +143,7 @@ def load_round_data(data_dir=sample_case_path) -> List[RoundDataIncludesPoseSens
                 round_meta_info['tech_name'] = tech_name
                 tech_dir = os.path.join(player_dir, tech_name)
                 if os.path.isdir(tech_dir):
-                    for round_id in ['round_00', 'round_01', 'round_02']: 
+                    for round_id in ['round_00', 'round_01', 'round_02']:
                         round_meta_info['round_id'] = round_id
                         round_dir = os.path.join(tech_dir, round_id)
                         if os.path.isdir(round_dir):
