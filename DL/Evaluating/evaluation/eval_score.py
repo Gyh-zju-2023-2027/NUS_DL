@@ -3,12 +3,13 @@ from models.src.predict_model import FusionModel
 from models.src.new_key_mapping import allowed_sugg_keys
 from models.src.setting import device
 
-# 1. ¼ÓÔØÄ£ĞÍ½á¹¹ºÍÈ¨ÖØ
-sensor_input_size = 60   # Ê¾Àı£ºÄãµÄ´«¸ĞÆ÷ÌØÕ÷Î¬¶È
-pose_input_size = 90     # Ê¾Àı£ºÄãµÄ×ËÌ¬ÌØÕ÷Î¬¶È
+ # 1. åŠ è½½æ¨¡å‹ç»“æ„å’Œæƒé‡
+sensor_input_size = 60   # ç¤ºä¾‹ï¼šä¼ æ„Ÿå™¨è¾“å…¥çš„ç‰¹å¾ç»´åº¦
+pose_input_size = 90     # ç¤ºä¾‹ï¼šå§¿æ€è¾“å…¥çš„ç‰¹å¾ç»´åº¦
 USE_LSTM_LAYER = True
 USE_LEARNABLE_MAPPING = True
 USE_SENSOR_PROCESS = True
+
 
 model = FusionModel(
     sensor_input_size,
@@ -20,24 +21,28 @@ model = FusionModel(
 model.load_state_dict(torch.load('models/weights/final_model_6_usinglstm_0_usingfulls_1.pth', map_location=device))
 model.eval()
 
-# 2. ×¼±¸ÊäÈëÊı¾İ£¨ÒÔµ¥¸öÑù±¾ÎªÀı£¬Êµ¼ÊÇëÓÃÄãµÄÊı¾İÌæ»»£©
-# ¼ÙÉè S=100£¬sensorK=60£¬poseK=30
+
+# 2. å‡†å¤‡è¾“å…¥æ•°æ®ï¼Œè¿™é‡Œç”¨éšæœºæ•°æ®ä½œä¸ºç¤ºä¾‹ï¼Œå®é™…ä½¿ç”¨æ—¶è¯·æ›¿æ¢ä¸ºçœŸå®æ•°æ®
+# å‡è®¾ S=100ï¼ŒsensorK=60ï¼ŒposeK=30
 sensor_x = torch.randn(1, 100, 60).to(device)      # [batch, S, sensorK]
 pose_x = torch.randn(1, 100, 30).to(device)        # [batch, S, poseK]
 stroke_mask = torch.ones(1, 100).to(device)        # [batch, S]
 
-# 3. ÍÆÀí²¢»ñÈ¡½¨ÒékeyºÍ·ÖÊı
+
+# 3. å‰å‘æ¨ç†ï¼Œè·å–å»ºè®®keyå’Œæ¦‚ç‡
 with torch.no_grad():
     output = model(sensor_x, pose_x, stroke_mask)  # [batch, key_num]
-    probs = torch.sigmoid(output)                  # ¸ÅÂÊ»¯
+    probs = torch.sigmoid(output)                  # æ¦‚ç‡åŒ–
     topk = 6
     topk_probs, topk_indices = probs.topk(topk, dim=1)  # [batch, topk]
 
-# 4. ×ªÎª½¨Òékey
-topk_keys = [allowed_sugg_keys[idx] for idx in topk_indices[0].cpu().numpy()]
-print("×îĞè¸Ä½øµÄ¶¯×÷½¨Òékey£º", topk_keys)
-print("¶ÔÓ¦·ÖÊı£¨Ô½¸ßÔ½Ğè¸Ä½ø£©£º", topk_probs[0].cpu().numpy())
 
-# 5. Éú³ÉÕûÌå¶¯×÷ÆÀ·Ö£¨0-100·Ö£¬Ô½¸ßÔ½±ê×¼£©
+# 4. è½¬ä¸ºå»ºè®®key
+topk_keys = [allowed_sugg_keys[idx] for idx in topk_indices[0].cpu().numpy()]
+print("Top-kå»ºè®®key:", topk_keys)
+print("å¯¹åº”æ¦‚ç‡ï¼ˆè¶Šå¤§è¶Šç›¸å…³ï¼‰:", topk_probs[0].cpu().numpy())
+
+
+# 5. è®¡ç®—ä¸€ä¸ªç®€å•çš„åŠ¨æ€è¯„åˆ†ï¼Œ0-100åˆ†ï¼Œè¶Šé«˜è¶Šå‡†ç¡®
 score = 100 * (1 - probs.mean().item())
-print(f"¶¯×÷±ê×¼³Ì¶ÈÆÀ·Ö£¨0-100£¬Ô½¸ßÔ½±ê×¼£©£º{score:.1f}")
+print(f"æ¨¡å‹å‡†ç¡®åº¦è¯„åˆ†ï¼ˆ0-100ï¼Œè¶Šé«˜è¶Šå‡†ï¼‰ï¼š{score:.1f}")

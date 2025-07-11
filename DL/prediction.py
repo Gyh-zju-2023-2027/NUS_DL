@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -6,24 +7,23 @@ from tensorflow.keras.layers import LSTM, Dense
 
 def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
     """
-    Ê¹ÓÃ LSTM Ä£ĞÍÄâºÏ²¢Ô¤²âÆ¹ÅÒÇò¹ì¼£¡£
+    Use LSTM model to predict ping-pong trajectory.
 
-    ²ÎÊı£º
-        trajectory: list of (x, y) ×ø±êµã
-        future_steps: ÒªÔ¤²âµÄÎ´À´¹ì¼£µãÊı
-        window_size: LSTM ÊäÈëĞòÁĞ³¤¶È
+    Args:
+        trajectory: list of (x, y) coordinates
+        future_steps: number of future points to predict
+        window_size: length of input window for LSTM
 
-    Êä³ö£º
-        »æÍ¼£ºÊµ¼Ê¹ì¼£ + Ô¤²â¹ì¼£
+    Returns:
+        Draws the real and predicted trajectory, and returns the predicted points array
     """
 
+    # æ£€æŸ¥è½¨è¿¹ç‚¹æ•°é‡æ˜¯å¦è¶³å¤Ÿ
     if len(trajectory) < window_size + 1:
-        print("¹ì¼£µã²»×ã£¬ÖÁÉÙĞèÒª {} ¸öµã".format(window_size + 1))
+        print("è½¨è¿¹ç‚¹å¤ªå°‘ï¼Œè‡³å°‘éœ€è¦ {} ä¸ªç‚¹".format(window_size + 1))
         return
 
-    # ---------------------
-    # 1. Êı¾İ×¼±¸
-    # ---------------------
+    # 1. æ•°æ®å‡†å¤‡
     data = np.array(trajectory, dtype=np.float32)
     x_max, y_max = data[:, 0].max(), data[:, 1].max()
     data[:, 0] /= x_max
@@ -36,9 +36,7 @@ def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
     X = np.array(X)
     y = np.array(y)
 
-    # ---------------------
-    # 2. ¹¹½¨Ä£ĞÍ
-    # ---------------------
+    # 2. æ„å»ºæ¨¡å‹
     model = Sequential([
         LSTM(64, input_shape=(window_size, 2), return_sequences=False),
         Dense(32, activation='relu'),
@@ -46,14 +44,10 @@ def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
     ])
     model.compile(optimizer='adam', loss='mse')
 
-    # ---------------------
-    # 3. ÑµÁ·Ä£ĞÍ
-    # ---------------------
+    # 3. è®­ç»ƒæ¨¡å‹
     model.fit(X, y, epochs=300, verbose=0)
 
-    # ---------------------
-    # 4. Ô¤²âÎ´À´¹ì¼£
-    # ---------------------
+    # 4. é¢„æµ‹æœªæ¥è½¨è¿¹
     current_seq = X[-1]
     predictions = []
     for _ in range(future_steps):
@@ -61,24 +55,23 @@ def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
         predictions.append(pred)
         current_seq = np.vstack([current_seq[1:], pred])
 
-    # ---------------------
-    # 5. ·´¹éÒ»»¯ + ¿ÉÊÓ»¯
-    # ---------------------
+    # 5. åå½’ä¸€åŒ– + å¯è§†åŒ–
     data[:, 0] *= x_max
     data[:, 1] *= y_max
     predictions = np.array(predictions)
     predictions[:, 0] *= x_max
     predictions[:, 1] *= y_max
 
+    # ç»˜åˆ¶çœŸå®è½¨è¿¹å’Œé¢„æµ‹è½¨è¿¹
     plt.figure(figsize=(8, 6))
-    plt.plot(data[:, 0], data[:, 1], 'bo-', label='Ô­Ê¼¹ì¼£')
-    plt.plot(predictions[:, 0], predictions[:, 1], 'ro--', label='Ô¤²â¹ì¼£')
-    plt.xlabel("X ×ø±ê")
-    plt.ylabel("Y ×ø±ê")
-    plt.title("LSTM Æ¹ÅÒÇò¹ì¼£Ô¤²â")
+    plt.plot(data[:, 0], data[:, 1], 'bo-', label='Real Trajectory')
+    plt.plot(predictions[:, 0], predictions[:, 1], 'ro--', label='Predicted Trajectory')
+    plt.xlabel("X coordinate")
+    plt.ylabel("Y coordinate")
+    plt.title("LSTM Ping-pong Trajectory Prediction")
     plt.gca().invert_yaxis()
     plt.legend()
     plt.grid()
     plt.show()
 
-    return predictions  # ¿ÉÑ¡·µ»ØÔ¤²âµãÁĞ±í
+    return predictions  # è¿”å›é¢„æµ‹ç‚¹æ•°ç»„
