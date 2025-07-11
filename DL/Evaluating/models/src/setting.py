@@ -1,9 +1,12 @@
 import torch
-import sys
-import os
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if torch.cuda.is_available():
+    torch.cuda.set_device(0)
+    device = torch.device("cuda:0")
+else:
+    device = torch.device("cpu")
+
 print(f"Using device: {device}")
-torch.cuda.set_device(0) 
 
 data_root_path = './sampledata'
 

@@ -2,11 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from typing import List, Set, Dict
-from data_encoder import SensorEncoder, PoseEncoder
-from new_key_mapping import suggKey_to_dataKey_mapping, allowed_sugg_keys, \
-    suggKey_to_dataKey_aggregated_mapping
-from key_dim import all_data_keys
-from setting import device
+from .data_encoder import SensorEncoder, PoseEncoder
+from .new_key_mapping import suggKey_to_dataKey_mapping, allowed_sugg_keys, suggKey_to_dataKey_aggregated_mapping
+from .key_dim import all_data_keys
+from .setting import device
 class FusionModel(nn.Module):
     def __init__(self, sensor_input_size, pose_input_size, USE_LSTM_LAYER, USE_LEARNABLE_MAPPING, USE_SENSOR_PROCESS, hidden_size=64):
         super().__init__()

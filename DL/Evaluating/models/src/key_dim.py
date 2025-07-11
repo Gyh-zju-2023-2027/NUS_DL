@@ -1,8 +1,8 @@
 import re
 from typing import Tuple, Optional, List, Union, Literal, Set, Dict, get_args
 from pydantic import BaseModel
-from setting import USE_SENSOR_PROCESS
-from new_key_mapping import AllowedSuggestionType, AllowedSuggestionKey
+from .setting import USE_SENSOR_PROCESS
+from .new_key_mapping import AllowedSuggestionType, AllowedSuggestionKey
 
 sensor_phy_dim_keys = ["acc_x", "acc_y", "acc_z", "agl_speed_x", "agl_speed_y", "agl_speed_z", "agl_x", "agl_y", "agl_z",
                 "mgt_x", "mgt_y", "mgt_z", "quat_1", "quat_2",

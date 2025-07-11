@@ -8,13 +8,13 @@ from sklearn.model_selection import train_test_split
 import os
 import json
 from torch.utils.data import DataLoader, Dataset
-from new_key_mapping import AllowedSuggestionKey, \
+from models.src.new_key_mapping import AllowedSuggestionKey, \
     allowed_sugg_keys, AllowedSuggestionType
-from key_dim import sensor_phy_dim_keys, RoundExpertSuggestions, StrokeExpertSuggestion, RoundDataIncludesPoseSensor, \
+from models.src.key_dim import sensor_phy_dim_keys, RoundExpertSuggestions, StrokeExpertSuggestion, RoundDataIncludesPoseSensor, \
     PREDEFINE_pose_dim_keys, all_data_keys, ParsedSuggestion, PREDEFINE_sensor_dim_keys
 from config import FLAG_SENSECOACH
 
-sample_case_path = '../../sampledata'
+sample_case_path = '../../../../sampledata'
 
 
 def custom_collate_fn(batch):
@@ -143,7 +143,7 @@ def load_round_data(data_dir=sample_case_path) -> List[RoundDataIncludesPoseSens
                 round_meta_info['tech_name'] = tech_name
                 tech_dir = os.path.join(player_dir, tech_name)
                 if os.path.isdir(tech_dir):
-                    for round_id in ['round_00', 'round_01', 'round_02']:
+                    for round_id in ['round_00', 'round_01', 'round_02']: 
                         round_meta_info['round_id'] = round_id
                         round_dir = os.path.join(tech_dir, round_id)
                         if os.path.isdir(round_dir):

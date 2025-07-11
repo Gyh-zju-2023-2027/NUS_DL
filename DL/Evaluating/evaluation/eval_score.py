@@ -1,43 +1,234 @@
+# -*- coding: utf-8 -*-
+
+"""
+File Name: eval_score.py
+Description: åŸºäºè®­ç»ƒå¥½çš„æ¨¡å‹æƒé‡ï¼Œå¯¹æµ‹è¯•æ•°æ®è¿›è¡ŒåŠ¨ä½œè¯„åˆ†å’Œå»ºè®®keyç”Ÿæˆ
+"""
+
+import tqdm
+import json
+import time
+from typing import List, Tuple, Set
 import torch
-from models.src.predict_model import FusionModel
-from models.src.new_key_mapping import allowed_sugg_keys
-from models.src.setting import device
+import sys
+import numpy as np
+import os
 
-# 1. ¼ÓÔØÄ£ĞÍ½á¹¹ºÍÈ¨ÖØ
-sensor_input_size = 60   # Ê¾Àı£ºÄãµÄ´«¸ĞÆ÷ÌØÕ÷Î¬¶È
-pose_input_size = 90     # Ê¾Àı£ºÄãµÄ×ËÌ¬ÌØÕ÷Î¬¶È
-USE_LSTM_LAYER = True
-USE_LEARNABLE_MAPPING = True
-USE_SENSOR_PROCESS = True
+parent_dir = os.path.dirname(os.getcwd())
+sys.path.append(parent_dir)
 
-model = FusionModel(
-    sensor_input_size,
-    pose_input_size,
-    USE_LSTM_LAYER=USE_LSTM_LAYER,
-    USE_LEARNABLE_MAPPING=USE_LEARNABLE_MAPPING,
-    USE_SENSOR_PROCESS=USE_SENSOR_PROCESS
-)
-model.load_state_dict(torch.load('models/weights/final_model_6_usinglstm_0_usingfulls_1.pth', map_location=device))
-model.eval()
+from data_loader import load_round_data, sample_case_path, preprocess_data_as_data_loader
+from models.src.new_key_mapping import allowed_sugg_keys, suggKey_to_dataKey_mapping, AllowedSuggestionKey, AllowedSuggestionType
+from load_model import load_model
+from models.src.key_dim import PREDEFINE_sensor_dim_keys, PREDEFINE_pose_dim_keys, RoundDataIncludesPoseSensor
+from config import device, top_k, FLAG_SENSECOACH, trained_model_path
+from typing import List
 
-# 2. ×¼±¸ÊäÈëÊı¾İ£¨ÒÔµ¥¸öÑù±¾ÎªÀı£¬Êµ¼ÊÇëÓÃÄãµÄÊı¾İÌæ»»£©
-# ¼ÙÉè S=100£¬sensorK=60£¬poseK=30
-sensor_x = torch.randn(1, 100, 60).to(device)      # [batch, S, sensorK]
-pose_x = torch.randn(1, 100, 30).to(device)        # [batch, S, poseK]
-stroke_mask = torch.ones(1, 100).to(device)        # [batch, S]
+def evaluate_suggestion_f1(predicted_key_type: Set[Tuple[str, str]], true_key_type: Set[Tuple[str, str]]):
+    """
+    F1 score of suggestion_type
+    """
+    predicted_set = predicted_key_type
+    true_set = true_key_type
+    precision = len(predicted_set & true_set) / len(predicted_set) if len(predicted_set) > 0 else 0
+    recall = len(predicted_set & true_set) / len(true_set) if len(true_set) > 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    return precision, recall, f1
 
-# 3. ÍÆÀí²¢»ñÈ¡½¨ÒékeyºÍ·ÖÊı
-with torch.no_grad():
-    output = model(sensor_x, pose_x, stroke_mask)  # [batch, key_num]
-    probs = torch.sigmoid(output)                  # ¸ÅÂÊ»¯
-    topk = 6
-    topk_probs, topk_indices = probs.topk(topk, dim=1)  # [batch, topk]
+def calc_key(llm_record_output):
+    """è®¡ç®—å»ºè®®keyçš„precision, recall, f1"""
+    precision_list_key = []
+    recall_list_key = []
+    f1_list_key = []
+    for round_ in llm_record_output:
+        round_sugg_key_set = set([item[0] for item in round_['true_set']])
+        sugg_key_set = set([sugg_key[0] for sugg_key in round_['all_llm_pred_sugg_key_types_this_round']])
+        if(len(sugg_key_set) != 6):
+            print(round_['round_.round_meta_info'])
+            print(sugg_key_set)            
+        precission_key, recall_key, f1_key = evaluate_suggestion_f1(sugg_key_set, round_sugg_key_set)
+        precision_list_key.append(precission_key)
+        recall_list_key.append(recall_key)
+        f1_list_key.append(f1_key)
+    avg_precision_key = sum(precision_list_key)/len(precision_list_key)
+    avg_recall_key = sum(recall_list_key)/len(recall_list_key)
+    avg_f1_key = sum(f1_list_key)/len(f1_list_key)
+    print("avg_precision_key:",avg_precision_key,"avg_recall_key:",avg_recall_key,"avg_f1_key:",avg_f1_key)
+    return avg_precision_key,avg_recall_key,avg_f1_key
 
-# 4. ×ªÎª½¨Òékey
-topk_keys = [allowed_sugg_keys[idx] for idx in topk_indices[0].cpu().numpy()]
-print("×îĞè¸Ä½øµÄ¶¯×÷½¨Òékey£º", topk_keys)
-print("¶ÔÓ¦·ÖÊı£¨Ô½¸ßÔ½Ğè¸Ä½ø£©£º", topk_probs[0].cpu().numpy())
+def calc_keytype(llm_record_output):
+    """è®¡ç®—å»ºè®®key+typeçš„precision, recall, f1"""
+    precision_list_with_no_wrong_key = []
+    recall_list_with_no_wrong_key = []
+    f1_list_with_no_wrong_key = []
+    for round_ in llm_record_output:
+        all_llm_pred_sugg_key_types_this_round = set([tuple(item) for item in round_['all_llm_pred_sugg_key_types_this_round']])
+        round_sugg_key_type_set = set([tuple(item) for item in round_['true_set']])
+        precission_key_type_no_wrong_key, recall_key_type_no_wrong_key, f1_key_type_no_wrong_key = evaluate_suggestion_f1(all_llm_pred_sugg_key_types_this_round, round_sugg_key_type_set)
+        precision_list_with_no_wrong_key.append(precission_key_type_no_wrong_key)
+        recall_list_with_no_wrong_key.append(recall_key_type_no_wrong_key)
+        f1_list_with_no_wrong_key.append(f1_key_type_no_wrong_key)
+    avg_precision_key_type_no_wrong_key = sum(precision_list_with_no_wrong_key)/len(precision_list_with_no_wrong_key)
+    avg_recall_key_type_no_wrong_key = sum(recall_list_with_no_wrong_key)/len(recall_list_with_no_wrong_key)
+    avg_f1_key_type_no_wrong_key = sum(f1_list_with_no_wrong_key)/len(f1_list_with_no_wrong_key)
+    print("avg_precision_key_type:",avg_precision_key_type_no_wrong_key,"avg_recall_key_type:",avg_recall_key_type_no_wrong_key,"avg_f1_key_type:",avg_f1_key_type_no_wrong_key)    
+    return avg_precision_key_type_no_wrong_key,avg_recall_key_type_no_wrong_key,avg_f1_key_type_no_wrong_key
 
-# 5. Éú³ÉÕûÌå¶¯×÷ÆÀ·Ö£¨0-100·Ö£¬Ô½¸ßÔ½±ê×¼£©
-score = 100 * (1 - probs.mean().item())
-print(f"¶¯×÷±ê×¼³Ì¶ÈÆÀ·Ö£¨0-100£¬Ô½¸ßÔ½±ê×¼£©£º{score:.1f}")
+class RoundDataWithSuggKeys:
+    def __init__(self, pred_sugg_keys, true_sugg_keys, sugg_key_type_set, round_meta_info, pose_data, sensor_data, stroke_mask):
+        self.pred_sugg_keys = pred_sugg_keys
+        self.true_sugg_keys = true_sugg_keys
+        self.sugg_key_type_set = sugg_key_type_set
+        self.round_meta_info = round_meta_info
+        self.pose_data = pose_data
+        self.sensor_data = sensor_data
+        self.stroke_mask = stroke_mask
+
+def get_sugg_keys(model, test_data_loader, topk=6) -> List[RoundDataWithSuggKeys]:
+    """
+    ä»æ¨¡å‹è¾“å‡ºä¸­è·å–topkå»ºè®®keys
+    """
+    round_data_with_gen_sugg_keys = []
+    with torch.no_grad():
+        for batch in test_data_loader:
+            sensor_x, pose_x, stroke_mask, round_meta_info, sugg_key_type_set, targets = batch
+            sensor_x = sensor_x.to(device, non_blocking=True)
+            pose_x = pose_x.to(device, non_blocking=True)
+            stroke_mask = stroke_mask.to(device, non_blocking=True)
+            logits = model(sensor_x, pose_x, stroke_mask)
+            probs = torch.sigmoid(logits)
+            _, topk_indices = probs.topk(topk, dim=1)
+            for batch_idx, batch_sugg_keys in enumerate(topk_indices.tolist()):
+                true_keys = []
+                for (key,type) in sugg_key_type_set[batch_idx]:
+                    true_keys.append(key)
+                round_data_with_gen_sugg_keys.append(RoundDataWithSuggKeys(
+                    pred_sugg_keys=[allowed_sugg_keys[idx] for idx in batch_sugg_keys],
+                    true_sugg_keys=true_keys,
+                    round_meta_info=round_meta_info[batch_idx],
+                    pose_data=pose_x[batch_idx].tolist(),
+                    sensor_data=sensor_x[batch_idx].tolist(),
+                    stroke_mask=stroke_mask[batch_idx].tolist(),
+                    sugg_key_type_set=sugg_key_type_set[batch_idx]
+                ))
+    return round_data_with_gen_sugg_keys
+
+def calculate_action_score(probs):
+    """
+    æ ¹æ®æ¨¡å‹è¾“å‡ºçš„æ¦‚ç‡è®¡ç®—åŠ¨ä½œè¯„åˆ†
+    :param probs: æ¨¡å‹è¾“å‡ºçš„æ¦‚ç‡ [batch, num_keys]
+    :return: åŠ¨ä½œè¯„åˆ† (0-100åˆ†ï¼Œè¶Šé«˜è¶Šæ ‡å‡†)
+    """
+    # æ–¹æ³•1: ç”¨å¹³å‡æ¦‚ç‡çš„è¡¥æ•°ä½œä¸ºè¯„åˆ†
+    score = 100 * (1 - probs.mean().item())
+    return score
+
+def evaluate_action_quality(model, test_data_loader, topk=6):
+    """
+    è¯„ä¼°åŠ¨ä½œè´¨é‡ï¼šè·å–å»ºè®®keyså’Œè¯„åˆ†
+    """
+    all_results = []
+    all_scores = []
+    
+    with torch.no_grad():
+        for batch in tqdm.tqdm(test_data_loader, desc="è¯„ä¼°åŠ¨ä½œè´¨é‡"):
+            sensor_x, pose_x, stroke_mask, round_meta_info, sugg_key_type_set, targets = batch
+            sensor_x = sensor_x.to(device, non_blocking=True)
+            pose_x = pose_x.to(device, non_blocking=True)
+            stroke_mask = stroke_mask.to(device, non_blocking=True)
+            
+            logits = model(sensor_x, pose_x, stroke_mask)
+            probs = torch.sigmoid(logits)
+            _, topk_indices = probs.topk(topk, dim=1)
+            
+            for batch_idx in range(probs.shape[0]):
+                # è·å–å»ºè®®keys
+                sugg_keys = [allowed_sugg_keys[idx] for idx in topk_indices[batch_idx].tolist()]
+                sugg_scores = probs[batch_idx][topk_indices[batch_idx]].tolist()
+                
+                # è®¡ç®—åŠ¨ä½œè¯„åˆ†
+                action_score = calculate_action_score(probs[batch_idx])
+                all_scores.append(action_score)
+                
+                # ä¿å­˜ç»“æœ
+                result = {
+                    'round_meta_info': round_meta_info[batch_idx],
+                    'suggestion_keys': sugg_keys,
+                    'suggestion_scores': sugg_scores,
+                    'action_score': action_score,
+                    'true_sugg_keys': [key for key, _ in sugg_key_type_set[batch_idx]]
+                }
+                all_results.append(result)
+                
+                print(f"\n=== åŠ¨ä½œè¯„ä¼°ç»“æœ ===")
+                print(f"è½®æ¬¡ä¿¡æ¯: {result['round_meta_info']}")
+                print(f"åŠ¨ä½œè¯„åˆ†: {action_score:.1f}/100")
+                print(f"æœ€éœ€æ”¹è¿›çš„å»ºè®®keys:")
+                for i, (key, score) in enumerate(zip(sugg_keys, sugg_scores)):
+                    print(f"  {i+1}. {key}: {score:.3f}")
+    
+    # è®¡ç®—ç»Ÿè®¡ä¿¡æ¯
+    avg_score = np.mean(all_scores)
+    print(f"\n=== æ€»ä½“ç»Ÿè®¡ ===")
+    print(f"å¹³å‡åŠ¨ä½œè¯„åˆ†: {avg_score:.1f}/100")
+    print(f"æœ€é«˜è¯„åˆ†: {max(all_scores):.1f}")
+    print(f"æœ€ä½è¯„åˆ†: {min(all_scores):.1f}")
+    
+    return all_results, all_scores
+
+if __name__ == "__main__":
+    # æ¨¡å‹å‚æ•°è®¾ç½®
+    sensor_input_size = len(PREDEFINE_sensor_dim_keys)
+    fps = 10
+    use_lstm = False
+    pose_input_size = fps * len(PREDEFINE_pose_dim_keys) * 3 
+    num_keys = len(PREDEFINE_sensor_dim_keys) + len(PREDEFINE_pose_dim_keys)
+    local_model_path = trained_model_path
+    
+    # åŠ è½½æ¨¡å‹
+    print("æ­£åœ¨åŠ è½½æ¨¡å‹...")
+    model = load_model(sensor_input_size, pose_input_size, USE_LSTM_LAYER=use_lstm, path=local_model_path, USE_SENSOR_PROCESS=FLAG_SENSECOACH)
+    model.eval()
+    
+    # åŠ è½½æµ‹è¯•æ•°æ®
+    print("æ­£åœ¨åŠ è½½æµ‹è¯•æ•°æ®...")
+    batch_size = 5
+    round_data_list: List[RoundDataIncludesPoseSensor] = load_round_data(sample_case_path)
+    train_set, valid_set, test_set = preprocess_data_as_data_loader(round_data_list, batch_size, fps)
+    
+    # è¯„ä¼°åŠ¨ä½œè´¨é‡
+    print("å¼€å§‹è¯„ä¼°åŠ¨ä½œè´¨é‡...")
+    results, scores = evaluate_action_quality(model, test_set, topk=top_k)
+    
+    # ä¿å­˜ç»“æœ
+    output_file = "action_evaluation_results.json"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    print(f"\nè¯„ä¼°ç»“æœå·²ä¿å­˜åˆ°: {output_file}")
+    
+    # è®¡ç®—è¯„ä¼°æŒ‡æ ‡ï¼ˆå¦‚æœæœ‰çœŸå®æ ‡ç­¾ï¼‰
+    print("\n=== è¯„ä¼°æŒ‡æ ‡ ===")
+    round_data_with_gen_sugg_keys = get_sugg_keys(model, test_set, topk=top_k)
+    
+    # å‡†å¤‡è¯„ä¼°æ•°æ®
+    eval_data = []
+    for round_ in round_data_with_gen_sugg_keys:
+        all_pred_sugg_key_types_this_round = set()
+        for sugg_key in round_.pred_sugg_keys:
+            # è¿™é‡Œç®€åŒ–å¤„ç†ï¼Œå®é™…å¯èƒ½éœ€è¦æ ¹æ®å…·ä½“éœ€æ±‚è®¾ç½®suggestion_type
+            all_pred_sugg_key_types_this_round.add((sugg_key, "position"))
+        
+        true_key_type_set = set([tuple(item) for item in round_.sugg_key_type_set])
+        
+        eval_data.append({
+            "all_llm_pred_sugg_key_types_this_round": list(all_pred_sugg_key_types_this_round),
+            "true_set": list(true_key_type_set),
+            "round_.round_meta_info": round_.round_meta_info
+        })
+    
+    # è®¡ç®—æŒ‡æ ‡
+    key_p, key_r, key_f1 = calc_key(eval_data)
+    keytype_p, keytype_r, keytype_f1 = calc_keytype(eval_data)
+    
+    print(f"å»ºè®®Keyè¯„ä¼° - Precision: {key_p:.4f}, Recall: {key_r:.4f}, F1: {key_f1:.4f}")
+    print(f"å»ºè®®Key+Typeè¯„ä¼° - Precision: {keytype_p:.4f}, Recall: {keytype_r:.4f}, F1: {keytype_f1:.4f}")

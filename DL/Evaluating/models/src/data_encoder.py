@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-from key_dim import PREDEFINE_pose_dim_keys
-from setting import USE_FULL_SENSOR_SEQUENCE
+from .key_dim import PREDEFINE_pose_dim_keys
+from .setting import USE_FULL_SENSOR_SEQUENCE
 
 
 class SensorEncoder(nn.Module):

@@ -6,23 +6,23 @@ from tensorflow.keras.layers import LSTM, Dense
 
 def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
     """
-    Ê¹ÓÃ LSTM Ä£ĞÍÄâºÏ²¢Ô¤²âÆ¹ÅÒÇò¹ì¼£¡£
+    ä½¿ç”¨ LSTM æ¨¡å‹æ‹Ÿåˆå¹¶é¢„æµ‹ä¹’ä¹“çƒè½¨è¿¹ã€‚
 
-    ²ÎÊı£º
-        trajectory: list of (x, y) ×ø±êµã
-        future_steps: ÒªÔ¤²âµÄÎ´À´¹ì¼£µãÊı
-        window_size: LSTM ÊäÈëĞòÁĞ³¤¶È
+    å‚æ•°ï¼š
+        trajectory: list of (x, y) åæ ‡ç‚¹
+        future_steps: è¦é¢„æµ‹çš„æœªæ¥è½¨è¿¹ç‚¹æ•°
+        window_size: LSTM è¾“å…¥åºåˆ—é•¿åº¦
 
-    Êä³ö£º
-        »æÍ¼£ºÊµ¼Ê¹ì¼£ + Ô¤²â¹ì¼£
+    è¾“å‡ºï¼š
+        ç»˜å›¾ï¼šå®é™…è½¨è¿¹ + é¢„æµ‹è½¨è¿¹
     """
 
     if len(trajectory) < window_size + 1:
-        print("¹ì¼£µã²»×ã£¬ÖÁÉÙĞèÒª {} ¸öµã".format(window_size + 1))
+        print("è½¨è¿¹ç‚¹ä¸è¶³ï¼Œè‡³å°‘éœ€è¦ {} ä¸ªç‚¹".format(window_size + 1))
         return
 
     # ---------------------
-    # 1. Êı¾İ×¼±¸
+    # 1. æ•°æ®å‡†å¤‡
     # ---------------------
     data = np.array(trajectory, dtype=np.float32)
     x_max, y_max = data[:, 0].max(), data[:, 1].max()
@@ -37,7 +37,7 @@ def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
     y = np.array(y)
 
     # ---------------------
-    # 2. ¹¹½¨Ä£ĞÍ
+    # 2. æ„å»ºæ¨¡å‹
     # ---------------------
     model = Sequential([
         LSTM(64, input_shape=(window_size, 2), return_sequences=False),
@@ -47,12 +47,12 @@ def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
     model.compile(optimizer='adam', loss='mse')
 
     # ---------------------
-    # 3. ÑµÁ·Ä£ĞÍ
+    # 3. è®­ç»ƒæ¨¡å‹
     # ---------------------
     model.fit(X, y, epochs=300, verbose=0)
 
     # ---------------------
-    # 4. Ô¤²âÎ´À´¹ì¼£
+    # 4. é¢„æµ‹æœªæ¥è½¨è¿¹
     # ---------------------
     current_seq = X[-1]
     predictions = []
@@ -62,7 +62,7 @@ def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
         current_seq = np.vstack([current_seq[1:], pred])
 
     # ---------------------
-    # 5. ·´¹éÒ»»¯ + ¿ÉÊÓ»¯
+    # 5. åå½’ä¸€åŒ– + å¯è§†åŒ–
     # ---------------------
     data[:, 0] *= x_max
     data[:, 1] *= y_max
@@ -71,14 +71,14 @@ def predict_trajectory_lstm(trajectory, future_steps=5, window_size=5):
     predictions[:, 1] *= y_max
 
     plt.figure(figsize=(8, 6))
-    plt.plot(data[:, 0], data[:, 1], 'bo-', label='Ô­Ê¼¹ì¼£')
-    plt.plot(predictions[:, 0], predictions[:, 1], 'ro--', label='Ô¤²â¹ì¼£')
-    plt.xlabel("X ×ø±ê")
-    plt.ylabel("Y ×ø±ê")
-    plt.title("LSTM Æ¹ÅÒÇò¹ì¼£Ô¤²â")
+    plt.plot(data[:, 0], data[:, 1], 'bo-', label='åŸå§‹è½¨è¿¹')
+    plt.plot(predictions[:, 0], predictions[:, 1], 'ro--', label='é¢„æµ‹è½¨è¿¹')
+    plt.xlabel("X åæ ‡")
+    plt.ylabel("Y åæ ‡")
+    plt.title("LSTM ä¹’ä¹“çƒè½¨è¿¹é¢„æµ‹")
     plt.gca().invert_yaxis()
     plt.legend()
     plt.grid()
     plt.show()
 
-    return predictions  # ¿ÉÑ¡·µ»ØÔ¤²âµãÁĞ±í
+    return predictions  # å¯é€‰è¿”å›é¢„æµ‹ç‚¹åˆ—è¡¨
