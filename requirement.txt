@@ -1,0 +1,26 @@
+# 数值计算与深度学习
+numpy>=1.19.0
+torch>=1.10.0
+
+# 视频/图像处理
+opencv-python>=4.5.1
+mediapipe>=0.8.10
+
+# 信号处理与绘图（stroke_detection、align_video_sensor）
+scipy>=1.5.0
+matplotlib>=3.3.0
+
+# 结构化与验证
+pydantic>=1.8.0
+
+# 进度条
+tqdm>=4.60.0
+
+# 与 OpenAI 接口交互
+openai>=0.27.0
+
+# （可选）如果你要跑视频-LLM 一体化评测
+vllm>=0.1.0
+
+# （可选）如果后续用到规则化指标或传统 ML
+scikit-learn>=0.24.0
