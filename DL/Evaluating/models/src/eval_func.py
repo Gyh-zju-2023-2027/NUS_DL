@@ -38,15 +38,15 @@ def topk_ndcg_gpu(preds: torch.Tensor, targets: torch.Tensor, k=3):
 def save_results_to_json(file_path, results):
 
     if not os.path.isfile(file_path):
-        with open(file_path, 'w') as json_file:
+        with open(file_path, 'w',encoding="utf-8") as json_file:
             json.dump([], json_file)
 
-    with open(file_path, 'r') as json_file:
+    with open(file_path, 'r',encoding="utf-8") as json_file:
         data = json.load(json_file)
 
     data.append(results)
 
-    with open(file_path, 'w') as json_file:
+    with open(file_path, 'w',encoding="utf-8") as json_file:
         json.dump(data, json_file, indent=4)
 
 

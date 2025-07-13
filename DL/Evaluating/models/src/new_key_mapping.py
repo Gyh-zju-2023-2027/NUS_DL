@@ -30,15 +30,7 @@ AllowedDataFeatureKeys = Union[
     Literal["right_index"], Literal["left_thumb"], Literal["right_thumb"],
     Literal["left_hip"], Literal["right_hip"], Literal["left_knee"], Literal["right_knee"], Literal["left_ankle"],
     Literal["right_ankle"], Literal["left_heel"], Literal["right_heel"],
-    Literal["left_foot_index"], Literal["right_foot_index"],
-
-Literal["acc_peak_exp_sqrt"], Literal["agl_y_peak"], Literal["agl_spd_peak_exp_sqrt"],
-
-Literal["acc_x"],    Literal["acc_y"],    Literal["acc_z"],
-    Literal["agl_speed_x"],    Literal["agl_speed_y"],    Literal["agl_speed_z"],
-    Literal["agl_x"],    Literal["agl_y"],    Literal["agl_z"],
-    Literal["mgt_x"],    Literal["mgt_y"],    Literal["mgt_z"],
-    Literal["quat_1"],    Literal["quat_2"],    Literal["quat_3"],    Literal["quat_4"]
+    Literal["left_foot_index"], Literal["right_foot_index"]
 ]
 
 # region Raw text key to SuggKeys
@@ -188,8 +180,8 @@ suggKey_to_dataKey_mapping: Dict[AllowedSuggestionKey, List[AllowedDataFeatureKe
     "right_wrist": ["right_wrist"],
     "right_shoulder": ["right_shoulder"],
     "right_forearm": ["right_elbow", "right_wrist"],
-    "time_of_striking_ball": ["acc_x", "acc_y", "acc_z", "agl_speed_x", "agl_speed_y", "agl_speed_z"],
-    "angle_of_racket": ["agl_x", "agl_y", "agl_z"],
+    "time_of_striking_ball": ["right_shoulder", "right_wrist"],  # 使用pose数据替代sensor数据
+    "angle_of_racket": ["right_shoulder", "right_wrist"],  # 使用pose数据替代sensor数据
     "left_foot": ["left_foot_index", "left_ankle", "left_heel"],
     "right_foot": ["right_foot_index", "right_ankle", "right_heel"],
     "waist": ["left_hip", "right_hip"],
@@ -198,11 +190,11 @@ suggKey_to_dataKey_mapping: Dict[AllowedSuggestionKey, List[AllowedDataFeatureKe
     "left_elbow": ["left_elbow"],
     "right_elbow": ["right_elbow"],
     "left_wrist": ["left_wrist"],
-    "backswing_of_racket": ["right_shoulder", "right_wrist", "agl_speed_x", "agl_speed_y", "agl_speed_z"],
-    "left_hand": ["left_wrist", "left_index", "left_pinky", "left_thumb"],  # mapped to actual hand part
-    "right_hand": ["right_wrist", "right_index", "right_pinky", "right_thumb"],  # mapped to actual hand part
-    "left_leg": ["left_knee"],  # mapped to an allowable key
-    "right_leg": ["right_knee"],  # mapped to an allowable key
+    "backswing_of_racket": ["right_shoulder", "right_wrist", "right_elbow"],
+    "left_hand": ["left_wrist", "left_index", "left_pinky", "left_thumb"],
+    "right_hand": ["right_wrist", "right_index", "right_pinky", "right_thumb"],
+    "left_leg": ["left_knee"],
+    "right_leg": ["right_knee"],
     "left_knee": ["left_knee"],
     "right_knee": ["right_knee"],
     "right_finger": ["right_index", "right_pinky", "right_thumb"],
@@ -210,30 +202,5 @@ suggKey_to_dataKey_mapping: Dict[AllowedSuggestionKey, List[AllowedDataFeatureKe
     "grip_of_racket": ["right_wrist", "right_index", "right_pinky", "right_thumb"],
     "others": []
 }
-suggKey_to_dataKey_aggregated_mapping: Dict[AllowedSuggestionKey, List[AllowedDataFeatureKeys]] = {
-    "center_of_gravity": ["left_hip", "right_hip", "left_shoulder", "right_shoulder"],
-    "right_wrist": ["right_wrist"],
-    "right_shoulder": ["right_shoulder"],
-    "right_forearm": ["right_elbow", "right_wrist"],
-    "time_of_striking_ball": ["agl_spd_peak_exp_sqrt", "acc_peak_exp_sqrt"],
-    "angle_of_racket": ["agl_y_peak"],
-    "left_foot": ["left_foot_index", "left_ankle", "left_heel"],
-    "right_foot": ["right_foot_index", "right_ankle", "right_heel"],
-    "waist": ["left_hip", "right_hip"],
-    "right_upper_arm": ["right_shoulder"],
-    "left_shoulder": ["left_shoulder"],
-    "left_elbow": ["left_elbow"],
-    "right_elbow": ["right_elbow"],
-    "left_wrist": ["left_wrist"],
-    "backswing_of_racket": ["right_shoulder", "right_wrist", "agl_spd_peak_exp_sqrt"],
-    "left_hand": ["left_wrist", "left_index", "left_pinky", "left_thumb"],  # mapped to actual hand part
-    "right_hand": ["right_wrist", "right_index", "right_pinky", "right_thumb"],  # mapped to actual hand part
-    "left_leg": ["left_knee"],  # mapped to an allowable key
-    "right_leg": ["right_knee"],  # mapped to an allowable key
-    "left_knee": ["left_knee"],
-    "right_knee": ["right_knee"],
-    "right_finger": ["right_index", "right_pinky", "right_thumb"],
-    "upper_body": ["left_shoulder", "right_shoulder"],
-    "grip_of_racket": ["right_wrist", "right_index", "right_pinky", "right_thumb"],
-    "others": []
-}
+
+suggKey_to_dataKey_aggregated_mapping = suggKey_to_dataKey_mapping

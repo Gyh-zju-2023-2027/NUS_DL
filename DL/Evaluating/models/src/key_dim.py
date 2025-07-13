@@ -1,14 +1,9 @@
 import re
 from typing import Tuple, Optional, List, Union, Literal, Set, Dict, get_args
 from pydantic import BaseModel
-from .setting import USE_SENSOR_PROCESS
-from .new_key_mapping import AllowedSuggestionType, AllowedSuggestionKey
+from models.src.setting import USE_SENSOR_PROCESS
+from models.src.new_key_mapping import AllowedSuggestionType, AllowedSuggestionKey
 
-sensor_phy_dim_keys = ["acc_x", "acc_y", "acc_z", "agl_speed_x", "agl_speed_y", "agl_speed_z", "agl_x", "agl_y", "agl_z",
-                "mgt_x", "mgt_y", "mgt_z", "quat_1", "quat_2",
-                "quat_3", "quat_4"]
-
-PREDEFINE_sensor_dim_keys = ["acc_peak_exp_sqrt", "agl_y_peak", "agl_spd_peak_exp_sqrt"] if USE_SENSOR_PROCESS else sensor_phy_dim_keys
 pose_keypoints_with_official_name = [
     {"id": 0, "name": "Nose"},  
     {"id": 1, "name": "Left eye inner"},  
@@ -42,49 +37,31 @@ pose_keypoints_with_official_name = [
     {"id": 29, "name": "Left heel"},  
     {"id": 30, "name": "Right heel"},  
     {"id": 31, "name": "Left foot index"},  
-    {"id": 32, "name": "Right foot index"}  
+    {"id": 32, "name": "Right foot index"},  
 ]
+
 PREDEFINE_pose_dim_keys = [point["name"].lower().replace(' ', '_') for point in pose_keypoints_with_official_name]
-all_data_keys = PREDEFINE_pose_dim_keys + PREDEFINE_sensor_dim_keys 
 
+# 只保留pose相关的数据键
+all_data_keys = PREDEFINE_pose_dim_keys
 
-
-def validate_and_convert_suggkey(stroke_index, key:str, suggestion_type: str):
-    try:
-        stroke_index = int(stroke_index)
-    except ValueError:
-        print("Invalid stroke index; defaulting to 0")
-        stroke_index = 0  # Default to 0 if conversion fails
-
-    allowed_types = get_args(AllowedSuggestionType)
-    if suggestion_type not in allowed_types:
-        suggestion_type = 'others'
-
-    allowed_keys = get_args(AllowedSuggestionKey)
-    if key not in allowed_keys:
-        key = 'others'
-
-    return stroke_index, key, suggestion_type
 class ParsedSuggestion(BaseModel):
-    context: str
     key: AllowedSuggestionKey
     suggestion_type: AllowedSuggestionType
-
+    description: str
 
 class StrokeExpertSuggestion(BaseModel):
-    stroke_index: int
+    stroke_id: int
     suggestion: ParsedSuggestion
 
-
 class RoundExpertSuggestions(BaseModel):
-    summary_suggestions: List[ParsedSuggestion]
+    round_meta_info: str
     stroke_suggestions: List[StrokeExpertSuggestion]
-    suggestion_keys: List[AllowedSuggestionKey]
+    summary_suggestions: List[ParsedSuggestion]
 
 class RoundDataIncludesPoseSensor(BaseModel):
     round_meta_info: str
-    pose_data: List[List[List[List[float]]]]
-    sensor_data: List[List[List[float]]]
+    pose_data: List
     stroke_mask: List[int]
     expert_suggestions: List[RoundExpertSuggestions]
     expert_sugg_key_id_set: Set[int]
