@@ -1,5 +1,8 @@
 /T3Set_release_full_data
 venv/
-Evaluating/datas/aligned_downsampled.json
-Evaluating/datas/aligned_downsampled.png
-Evaluating/datas/pose_data.json
+DL/Evaluating/datas/aligned_downsampled.json
+DL/Evaluating/datas/aligned_downsampled.png
+DL/Evaluating/datas/pose_data.json
+DL/Evaluating/models/src/__pycache__/
+DL/Evaluating/datas/__pycache__/
+DL/Evaluating/evalution/__pycache__/

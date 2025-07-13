@@ -58,13 +58,13 @@ def main():
         cv2.destroyAllWindows()
 
         # 1. 保存原始姿态数据
-        pose_json = "pose_data.json"
+        pose_json = "../../../../sampledata/test/player_01/pose_data.json"
         with open(pose_json, "w", encoding="utf-8") as f:
             json.dump(frames_data, f, ensure_ascii=False, indent=2)
         print(f"[保存] 姿态数据 → {pose_json}")
 
         # 2. 调用击打峰值检测并可视化
-        output_path = "aligned_downsampled.json"
+        output_path = "../../../../sampledata/test/player_01/aligned_downsampled.json"
         get_pose_10hz_6lm(frames_data, output_path)
         print(f"[完成] 峰值结果 → {output_path} 及同名可视化图像")
 
