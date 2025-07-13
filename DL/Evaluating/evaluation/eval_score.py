@@ -17,10 +17,10 @@ import os
 parent_dir = os.path.dirname(os.getcwd())
 sys.path.append(parent_dir)
 
-from data_loader import load_round_data, sample_case_path, preprocess_data_as_data_loader
-from models.src.new_key_mapping import allowed_sugg_keys, suggKey_to_dataKey_mapping, AllowedSuggestionKey, AllowedSuggestionType
+from eval_data_loader import get_eval_loader
+from models.src.new_key_mapping import allowed_sugg_keys
 from load_model import load_model
-from models.src.key_dim import PREDEFINE_sensor_dim_keys, PREDEFINE_pose_dim_keys, RoundDataIncludesPoseSensor
+from models.src.key_dim import  PREDEFINE_pose_dim_keys, RoundDataIncludesPoseSensor
 from config import device, top_k, FLAG_SENSECOACH, trained_model_path
 from typing import List
 
@@ -44,8 +44,9 @@ def calc_key(llm_record_output):
         round_sugg_key_set = set([item[0] for item in round_['true_set']])
         sugg_key_set = set([sugg_key[0] for sugg_key in round_['all_llm_pred_sugg_key_types_this_round']])
         if(len(sugg_key_set) != 6):
-            print(round_['round_.round_meta_info'])
-            print(sugg_key_set)            
+            # print(round_['round_.round_meta_info'])
+            # print(sugg_key_set)  
+            pass          
         precission_key, recall_key, f1_key = evaluate_suggestion_f1(sugg_key_set, round_sugg_key_set)
         precision_list_key.append(precission_key)
         recall_list_key.append(recall_key)
@@ -123,7 +124,7 @@ def calculate_action_score(probs):
     score = 100 * (1 - probs.mean().item())
     return score
 
-def evaluate_action_quality(model, test_data_loader, topk=6):
+def evaluate_action_quality(model, test_loader, topk=6):
     """
     评估动作质量：获取建议keys和评分
     """
@@ -131,13 +132,11 @@ def evaluate_action_quality(model, test_data_loader, topk=6):
     all_scores = []
     
     with torch.no_grad():
-        for batch in tqdm.tqdm(test_data_loader, desc="评估动作质量"):
-            sensor_x, pose_x, stroke_mask, round_meta_info, sugg_key_type_set, targets = batch
-            sensor_x = sensor_x.to(device, non_blocking=True)
-            pose_x = pose_x.to(device, non_blocking=True)
-            stroke_mask = stroke_mask.to(device, non_blocking=True)
+        for pose_x, stroke_mask, meta in test_loader:
+            pose_x = pose_x.to(device)
+            stroke_mask = stroke_mask.to(device)
             
-            logits = model(sensor_x, pose_x, stroke_mask)
+            logits = model(pose_x, stroke_mask)
             probs = torch.sigmoid(logits)
             _, topk_indices = probs.topk(topk, dim=1)
             
@@ -150,85 +149,59 @@ def evaluate_action_quality(model, test_data_loader, topk=6):
                 action_score = calculate_action_score(probs[batch_idx])
                 all_scores.append(action_score)
                 
-                # 保存结果
+                # 保存结果 - 处理meta数据格式
+                if isinstance(meta, list):
+                    meta_data = meta[batch_idx]
+                else:
+                    meta_data = meta  # 如果是单个字典，直接使用
+                
                 result = {
-                    'round_meta_info': round_meta_info[batch_idx],
+                    'meta': meta_data,
                     'suggestion_keys': sugg_keys,
                     'suggestion_scores': sugg_scores,
-                    'action_score': action_score,
-                    'true_sugg_keys': [key for key, _ in sugg_key_type_set[batch_idx]]
+                    'action_score': action_score
                 }
                 all_results.append(result)
                 
-                print(f"\n=== 动作评估结果 ===")
-                print(f"轮次信息: {result['round_meta_info']}")
-                print(f"动作评分: {action_score:.1f}/100")
-                print(f"最需改进的建议keys:")
+                print(f"\n=== Action Assessment Results ===")
+                print(f"Round Info: {result['meta']}")
+                print(f"Action Score: {action_score:.1f}/100")
+                print(f"Keys that need improvement:")
                 for i, (key, score) in enumerate(zip(sugg_keys, sugg_scores)):
                     print(f"  {i+1}. {key}: {score:.3f}")
     
     # 计算统计信息
-    avg_score = np.mean(all_scores)
-    print(f"\n=== 总体统计 ===")
-    print(f"平均动作评分: {avg_score:.1f}/100")
-    print(f"最高评分: {max(all_scores):.1f}")
-    print(f"最低评分: {min(all_scores):.1f}")
+    if all_scores:
+        avg_score = np.mean(all_scores)
+        print(f"\n=== Overall Statistics ===")
+        print(f"Average Action Score: {avg_score:.1f}/100")
+        print(f"Highest Score: {max(all_scores):.1f}")
+        print(f"Lowest Score: {min(all_scores):.1f}")
+    else:
+        print("\n=== Overall Statistics ===")
+        print("No valid evaluation data, please check test set content and path.")
     
     return all_results, all_scores
 
 if __name__ == "__main__":
     # 模型参数设置
-    sensor_input_size = len(PREDEFINE_sensor_dim_keys)
     fps = 10
-    use_lstm = False
-    pose_input_size = fps * len(PREDEFINE_pose_dim_keys) * 3 
-    num_keys = len(PREDEFINE_sensor_dim_keys) + len(PREDEFINE_pose_dim_keys)
+    pose_input_size = fps * 3  # 每个关节有fps帧，每帧3个坐标(x,y,z)
     local_model_path = trained_model_path
-    
-    # 加载模型
-    print("正在加载模型...")
-    model = load_model(sensor_input_size, pose_input_size, USE_LSTM_LAYER=use_lstm, path=local_model_path, USE_SENSOR_PROCESS=FLAG_SENSECOACH)
+    test_dir = r"../../../../sampledata/test"  # 按实际路径修改
+
+    # Load model
+    print("Loading model...")
+    model = load_model(pose_input_size, USE_LSTM_LAYER=False, path=local_model_path, USE_SENSOR_PROCESS=FLAG_SENSECOACH)
     model.eval()
-    
-    # 加载测试数据
-    print("正在加载测试数据...")
-    batch_size = 5
-    round_data_list: List[RoundDataIncludesPoseSensor] = load_round_data(sample_case_path)
-    train_set, valid_set, test_set = preprocess_data_as_data_loader(round_data_list, batch_size, fps)
-    
-    # 评估动作质量
-    print("开始评估动作质量...")
-    results, scores = evaluate_action_quality(model, test_set, topk=top_k)
-    
-    # 保存结果
-    output_file = "action_evaluation_results.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"\n评估结果已保存到: {output_file}")
-    
-    # 计算评估指标（如果有真实标签）
-    print("\n=== 评估指标 ===")
-    round_data_with_gen_sugg_keys = get_sugg_keys(model, test_set, topk=top_k)
-    
-    # 准备评估数据
-    eval_data = []
-    for round_ in round_data_with_gen_sugg_keys:
-        all_pred_sugg_key_types_this_round = set()
-        for sugg_key in round_.pred_sugg_keys:
-            # 这里简化处理，实际可能需要根据具体需求设置suggestion_type
-            all_pred_sugg_key_types_this_round.add((sugg_key, "position"))
-        
-        true_key_type_set = set([tuple(item) for item in round_.sugg_key_type_set])
-        
-        eval_data.append({
-            "all_llm_pred_sugg_key_types_this_round": list(all_pred_sugg_key_types_this_round),
-            "true_set": list(true_key_type_set),
-            "round_.round_meta_info": round_.round_meta_info
-        })
-    
-    # 计算指标
-    key_p, key_r, key_f1 = calc_key(eval_data)
-    keytype_p, keytype_r, keytype_f1 = calc_keytype(eval_data)
-    
-    print(f"建议Key评估 - Precision: {key_p:.4f}, Recall: {key_r:.4f}, F1: {key_f1:.4f}")
-    print(f"建议Key+Type评估 - Precision: {keytype_p:.4f}, Recall: {keytype_r:.4f}, F1: {keytype_f1:.4f}")
+
+    # Load evaluation data
+    print("Loading evaluation data...")
+    test_loader = get_eval_loader(test_dir, batch_size=1)
+    # Get dataset size to avoid type check errors
+    dataset_size = getattr(test_loader.dataset, '__len__', lambda: 'Unknown')()
+    print(f"test_loader data count: {dataset_size}")
+
+    # Evaluate
+    print("Starting action quality evaluation...")
+    results, scores = evaluate_action_quality(model, test_loader, topk=top_k)

@@ -79,7 +79,7 @@ def skeletal_extraction(video_path, output_path,do_mask=False,mask_func = None):
     cap.release()
     cv2.destroyAllWindows()
 
-    with open(output_path, 'w') as f:
+    with open(output_path, 'w',encoding="utf-8") as f:
         json.dump(frames, f)
     return frames
 

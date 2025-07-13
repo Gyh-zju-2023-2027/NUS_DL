@@ -1,23 +1,15 @@
 import argparse
-import math
-import time
-from datetime import datetime
-from typing import List, Set, Tuple
-import numpy as np
 import torch.nn as nn
+import torch
+import torch.optim as optim
+from datetime import datetime
+import json
+import csv
 import os
-import sys
-
-sys.path.append(os.getcwd())
-
-from eval_func import topk_coverage_gpu, topk_ndcg_gpu, save_results_to_json, save_results_to_csv
-from key_dim import sensor_phy_dim_keys, PREDEFINE_pose_dim_keys, \
-    RoundDataIncludesPoseSensor, PREDEFINE_sensor_dim_keys, all_data_keys
-from data_loader import load_round_data, sample_case_path, get_datakey_idx_from_datakey, \
-    preprocess_data_as_data_loader
-from new_key_mapping import AllowedSuggestionType, AllowedSuggestionKey, clean_key_mapping, \
-    suggKey_to_dataKey_mapping, allowed_sugg_keys
-
+from typing import List
+from data_loader import load_round_data, preprocess_data_as_data_loader
+from key_dim import PREDEFINE_pose_dim_keys, RoundDataIncludesPoseSensor
+from new_key_mapping import allowed_sugg_keys
 from predict_model import FusionModel
 import torch
 import torch.optim as optim
@@ -29,8 +21,43 @@ def compute_loss(preds: torch.Tensor, targets: torch.Tensor, pos_weight2: torch.
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight2)
     return criterion(preds, targets)
 
+def topk_coverage_gpu(preds, targets, k=6):
+    # 获取top-k预测
+    _, topk_indices = torch.topk(preds, k, dim=1)
+    
+    # 创建one-hot编码
+    batch_size = preds.shape[0]
+    topk_one_hot = torch.zeros_like(preds)
+    topk_one_hot.scatter_(1, topk_indices, 1)
+    
+    # 计算指标
+    intersection = (topk_one_hot * targets).sum(dim=1)
+    precision = intersection / k
+    recall = intersection / (targets.sum(dim=1) + 1e-8)
+    f1 = 2 * (precision * recall) / (precision + recall + 1e-8)
+    
+    return precision.mean(), recall.mean(), f1.mean()
 
-
+def topk_ndcg_gpu(preds, targets, k=6):
+    # 获取top-k预测
+    _, topk_indices = torch.topk(preds, k, dim=1)
+    
+    # 获取对应的目标值
+    batch_size = preds.shape[0]
+    topk_targets = torch.gather(targets, 1, topk_indices)
+    
+    # 计算DCG
+    dcg = topk_targets / torch.log2(torch.arange(2, k + 2, device=preds.device).float())
+    dcg = dcg.sum(dim=1)
+    
+    # 计算IDCG (理想情况下的DCG)
+    sorted_targets, _ = torch.sort(targets, dim=1, descending=True)
+    idcg = sorted_targets[:, :k] / torch.log2(torch.arange(2, k + 2, device=preds.device).float())
+    idcg = idcg.sum(dim=1)
+    
+    # 计算NDCG
+    ndcg = dcg / (idcg + 1e-8)
+    return ndcg.mean()
 
 def evaluate_v(model, val_loader, device , topk, pos_weight1):
     model.eval()
@@ -39,12 +66,11 @@ def evaluate_v(model, val_loader, device , topk, pos_weight1):
     all_labels = []
     with torch.no_grad():
         for batch in val_loader:
-            sensor_x, pose_x, stroke_mask, _, _, targets = batch
-            sensor_x = sensor_x.to(device, non_blocking=True)
+            pose_x, stroke_mask, _, _, targets = batch
             pose_x = pose_x.to(device, non_blocking=True)
             stroke_mask = stroke_mask.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
-            logits = model(sensor_x, pose_x, stroke_mask)
+            logits = model(pose_x, stroke_mask)
             loss = compute_loss(logits, targets, pos_weight2=pos_weight1)
 
             probs = torch.sigmoid(logits)
@@ -58,14 +84,15 @@ def evaluate_v(model, val_loader, device , topk, pos_weight1):
     ndcg = topk_ndcg_gpu(all_preds, all_targets, k=topk)
 
     return val_loss / len(val_loader), precision.cpu().item(), recall.cpu().item(), f1.cpu().item(), ndcg.cpu().item()
-def train(train_loader, valid_loader, sensor_input_size, pose_input_size, num_classes, num_epochs,
+
+def train(train_loader, valid_loader, pose_input_size, num_classes, num_epochs,
           learning_rate, pos_weight_:float, top_k):
     def init_weights(m):
         if isinstance(m, nn.Linear):
             torch.nn.init.xavier_uniform_(m.weight)
             m.bias.data.fill_(0.01)
 
-    fusion_model = FusionModel(sensor_input_size, pose_input_size, USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=USE_LSTM_LAYER, USE_LEARNABLE_MAPPING=USE_LEARNABLE_MAPPING).to(device)
+    fusion_model = FusionModel(pose_input_size, USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=USE_LSTM_LAYER, USE_LEARNABLE_MAPPING=USE_LEARNABLE_MAPPING).to(device)
     fusion_model.apply(init_weights)
     optimizer = torch.optim.AdamW(fusion_model.parameters(), lr=learning_rate, weight_decay=1e-5)
     best_f1 = 0.4
@@ -75,9 +102,9 @@ def train(train_loader, valid_loader, sensor_input_size, pose_input_size, num_cl
         fusion_model.train()
         epoch_train_loss = 0.0
         for batch in train_loader:
-            sensor_data, pose_data, stroke_mask, _, _, targets = batch
+            pose_data, stroke_mask, _, _, targets = batch
             optimizer.zero_grad()
-            logits = fusion_model(sensor_data.to(device), pose_data.to(device), stroke_mask.to(device))
+            logits = fusion_model(pose_data.to(device), stroke_mask.to(device))
 
             batch_loss = compute_loss(logits, targets.to(device, non_blocking=True), pos_weight2=torch.tensor([pos_weight_]).to(device))
             batch_loss.backward()
@@ -99,14 +126,12 @@ def train(train_loader, valid_loader, sensor_input_size, pose_input_size, num_cl
             saved_val_precision, saved_val_recall, saved_val_f1, saved_val_ngcd = val_precision, val_recall, val_f1, val_ngcd
 
     path = f'outputs/final_model_{top_k}_usinglstm_{1 if USE_LSTM_LAYER else 0}_usingfulls_{1 if USE_FULL_SENSOR_SEQUENCE else 0}_usesp_{USE_SENSOR_PROCESS}_uselmap_{USE_LEARNABLE_MAPPING}_lr_5_epochnum_{num_epochs}.pth'
-    save_model(fusion_model, sensor_input_size=sensor_input_size, pose_input_size=pose_input_size,
+    save_model(fusion_model, pose_input_size=pose_input_size,
                path=path)
     return fusion_model, (saved_val_precision, saved_val_recall, saved_val_f1, saved_val_ngcd)
 
-
-
-def load_model_from_checkpoint(checkpoint_path, sensor_input_size, pose_input_size):
-    model = FusionModel(sensor_input_size, pose_input_size, USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=USE_LSTM_LAYER, USE_LEARNABLE_MAPPING=USE_LEARNABLE_MAPPING)
+def load_model_from_checkpoint(checkpoint_path, pose_input_size):
+    model = FusionModel(pose_input_size, USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=USE_LSTM_LAYER, USE_LEARNABLE_MAPPING=USE_LEARNABLE_MAPPING)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     checkpoint = torch.load(checkpoint_path)
 
@@ -117,13 +142,23 @@ def load_model_from_checkpoint(checkpoint_path, sensor_input_size, pose_input_si
     print(f"Model loaded from {checkpoint_path}, epoch: {epoch}, loss: {loss}")
     return model, optimizer
 
-
-def save_model(model, sensor_input_size, pose_input_size, path):
+def save_model(model, pose_input_size, path):
     torch.save(model.state_dict(), path)
-def load_model(sensor_input_size, pose_input_size,USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=False, USE_LEARNABLE_MAPPING=True, path='fusion_model.pth'):
-    model = FusionModel(sensor_input_size, pose_input_size, USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=USE_LSTM_LAYER, USE_LEARNABLE_MAPPING=USE_LEARNABLE_MAPPING).to(device)
+
+def load_model(pose_input_size, USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=False, USE_LEARNABLE_MAPPING=True, path='fusion_model.pth'):
+    model = FusionModel(pose_input_size, USE_SENSOR_PROCESS=USE_SENSOR_PROCESS, USE_LSTM_LAYER=USE_LSTM_LAYER, USE_LEARNABLE_MAPPING=USE_LEARNABLE_MAPPING).to(device)
     model.load_state_dict(torch.load(path))
     return model
+
+def save_results_to_json(file_path, results):
+    with open(file_path, 'w') as f:
+        json.dump(results, f, indent=4)
+
+def save_results_to_csv(file_path, results, fieldnames):
+    with open(file_path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerow(results)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -134,6 +169,7 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Ablation Study Parameters')
@@ -160,19 +196,17 @@ if __name__ == "__main__":
     embedding_dim = 64
     fps = 10
 
-    sensor_input_size = len(PREDEFINE_sensor_dim_keys) * (100 if USE_FULL_SENSOR_SEQUENCE else 1)
     pose_input_size = fps * len(PREDEFINE_pose_dim_keys) * 3  # 3是xyz
-    num_keys = len(PREDEFINE_sensor_dim_keys) + len(PREDEFINE_pose_dim_keys)
+    num_keys = len(PREDEFINE_pose_dim_keys)
 
-
-    round_data_list: List[RoundDataIncludesPoseSensor] = load_round_data(sample_case_path)
+    round_data_list: List[RoundDataIncludesPoseSensor] = load_round_data('../sampledata')
     train_set, test_set, valid_set = preprocess_data_as_data_loader(round_data_list, batch_size, fps)
     all_labels = []
-    for _, _, _, _, _, labels in train_set:
+    for _, _, _, _, labels in train_set:
         all_labels.extend(labels.tolist())
-    for _, _, _, _, _, labels in test_set:
+    for _, _, _, _, labels in test_set:
         all_labels.extend(labels.tolist())
-    for _, _, _, _, _, labels in valid_set:
+    for _, _, _, _, labels in valid_set:
         all_labels.extend(labels.tolist())
     print(len(all_labels))
     num_all_rounds = len(all_labels)
@@ -182,7 +216,7 @@ if __name__ == "__main__":
     pos_weight_f = total_neg / (total_pos + 1e-7)
     print("pos_weight", round(pos_weight_f, 3), round(total_pos / len(all_labels), 3))
 
-    saved_model, saved_val_res = train(train_set, valid_set, sensor_input_size, pose_input_size, num_keys,
+    saved_model, saved_val_res = train(train_set, valid_set, pose_input_size, num_keys,
                   num_epochs, learning_rate, pos_weight_f, top_k=top_k)
     saved_val_precision, saved_val_recall, saved_val_f1, saved_val_ndcg = saved_val_res
     test_loss, test_precision, test_recall, test_f1, test_ndcg = evaluate_v(saved_model, test_set, device, topk=top_k,

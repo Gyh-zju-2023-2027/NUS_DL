@@ -25,7 +25,7 @@ USE_LEARNABLE_MAPPING = True
 # endregion
 
 # models
-trained_model_path = r"F:\文档\02-课外学习\04-NUS\Advance\NUS_DL\DL\Evaluating\models\weights\final_model_6_usinglstm_0_usingfulls_1.pth"
+trained_model_path = r"../models/weights/final_model_6_usinglstm_0_usingfulls_1.pth"
 learning_rate = 0.00001
 num_epochs = 2
 top_k = 6

@@ -68,7 +68,7 @@ def pose_stroke_extraction(root_path):
     for root,dirs,files in os.walk(root_path):
         for file_name in files:
             if file_name == "pose.json" and os.path.basename(root) == 'pose':
-                with open(os.path.join(root,file_name),'r') as f:
+                with open(os.path.join(root,file_name),encoding="utf-8") as f:
                     pose_data = json.load(f)
                     output_path = os.path.join(root,'downsampled_peak_windows_right.json')
                     get_pose_10hz_6lm(pose_data,output_path)
