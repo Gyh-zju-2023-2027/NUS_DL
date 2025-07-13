@@ -38,7 +38,7 @@ def get_pose_10hz_6lm(pose_data,output_path):
                 right_wrist_y.append(landmark[2])
 
     smoothed_right = smooth_data(np.array(right_wrist_x))
-    if output_path.split('/')[-4] != 'pendulum':
+    if len(output_path.split('/')) > 4 and output_path.split('/')[-4] != 'pendulum':
         peaks_right = my_find_peaks(smoothed_right)
         print("len of peaks",len(peaks_right))
     else:

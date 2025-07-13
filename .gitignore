@@ -1,1 +1,5 @@
 /T3Set_release_full_data
+venv/
+Evaluating/datas/aligned_downsampled.json
+Evaluating/datas/aligned_downsampled.png
+Evaluating/datas/pose_data.json
