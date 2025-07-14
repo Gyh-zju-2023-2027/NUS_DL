@@ -1,17 +1,24 @@
 import cv2
 import numpy as np
-from prediction import predict_trajectory_lstm
+import pandas as pd
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'Tracking')))
+from LSTM_predict import predict_next
 
 def preprocess(image,lower_yellow,upper_yellow):
     hsv = cv2.cvtColor(image,cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, lower_yellow ,upper_yellow)
+    #mask = cv2.inRange(hsv, lower_yellow ,upper_yellow)
+    lower_orangered = np.array([5, 100, 100])
+    upper_orangered = np.array([25, 255, 255])
+    mask = cv2.inRange(hsv, lower_orangered, upper_orangered)
     return mask
 
 def nothing(x): pass
 
 def creat_Trackbar():
-    cv2.createTrackbar('SeXiang_L', 'Trackbar', 20, 179, nothing)
-    cv2.createTrackbar('SeXiang_H', 'Trackbar', 35, 179, nothing)
+    cv2.createTrackbar('SeXiang_L', 'Trackbar', 15, 179, nothing)
+    cv2.createTrackbar('SeXiang_H', 'Trackbar', 30, 179, nothing)
     cv2.createTrackbar('BaoHeDu_L', 'Trackbar', 100, 255, nothing)
     cv2.createTrackbar('BaoHeDu_H', 'Trackbar', 255, 255, nothing)
     cv2.createTrackbar('Zhi_L', 'Trackbar', 100, 255, nothing)
@@ -70,6 +77,26 @@ def show_image():
 
     cap.release()
     cv2.destroyAllWindows()
+
+def predict_trajectory_lstm(trajectory, future_steps=5):
+    # trajectory: [(x, y), ...]
+    if len(trajectory) < 10:
+        print("[LSTM] 轨迹点不足10，无法预测！")
+        return
+    temp_csv = "temp_trajectory.csv"
+    # 保存为 CSV
+    df = pd.DataFrame(trajectory, columns=['x', 'y'])
+    df.to_csv(temp_csv, index=False)
+    # 调用 LSTM 预测
+    try:
+        pred_df = predict_next(temp_csv, model_path='lstm_model.pth', seq_len=10, pred_len=future_steps)
+        print("[LSTM] 预测结果：")
+        print(pred_df)
+    except Exception as e:
+        print(f"[LSTM] 预测失败: {e}")
+    finally:
+        if os.path.exists(temp_csv):
+            os.remove(temp_csv)
 
 if __name__ == '__main__':
     show_image()

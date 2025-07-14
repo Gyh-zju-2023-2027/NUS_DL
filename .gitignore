@@ -2,4 +2,5 @@
 venv/
 DL/Evaluating/models/src/__pycache__/
 DL/Evaluating/datas/__pycache__/
-DL/Evaluating/evalution/__pycache__/
+DL/Evaluating/evaluation/__pycache__/
+DL/Tracking/__pycache__/
